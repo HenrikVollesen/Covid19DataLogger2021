@@ -22,6 +22,7 @@ namespace Covid19DataLogger2021
 
         // !!!Remember to change the Server name to your local MSSQL!!!
         private static string ConnectionString = "Server=SERVER2019\\SQLSERVER2019DEV;Database=Covid19DB;Trusted_Connection=True";
+
         private static string Command = "SELECT Alpha_2_code FROM GetAPICountries()";
 
         private static RestRequest request = null;
