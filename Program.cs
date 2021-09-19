@@ -11,27 +11,41 @@ namespace Covid19DataLogger2021
 {
     class Program_Covid19DataLogger
     {
-        // Optional to store data files on disk
-        private static bool StoreDatafiles = true;
         // Base folder for storage of coronavirus data - choose your own folder IF you want to save the data files
         private static string DataFolder = @"D:\Data\coronavirus\stats\CountryStats\";
 
-        private static string Filename_Stats = "LatestStats_";
-        private static string ClientString1 = "https://disease.sh/v3/covid-19/historical/";
-        private static string ClientString2 = "?lastdays=";
+        // If command line contains '-settingsfile', the next argument should be path to a settingsfile.
+        private static string SettingsPath = "";
+
+        private const string Filename_Stats = "LatestStats_";
+        private const string ClientString1 = "https://disease.sh/v3/covid-19/historical/";
+        private const string ClientString2 = "?lastdays=";
 
         // !!!Remember to change the Server name to your local MSSQL!!!
-        private static string ConnectionString = "Server=SERVER2019\\SQLSERVER2019DEV;Database=Covid19DB;Trusted_Connection=True";
+        //private static string ConnectionString = @"Server=localhost\MSSQLSERVER01;Database=Covid-19_Stats;Trusted_Connection=True";
+        private static string ConnectionString = @"Server=hildur.ucn.dk;initial catalog=Covid-19_Stats;User=psu_Covid19_Reader;Password=Corona_2020";
 
-        private static string Command = "SELECT Alpha_2_code FROM GetAPICountries()";
+        //private SqlConnectionStringBuilder sConnB;
+        private static List<SqlConnectionStringBuilder> ConnectionStrings = new List<SqlConnectionStringBuilder>();
+
+        // Optional to store data files on disk
+        private static bool StoreDatafiles = false;
+
+        // SQL command for getting predefined countries (there should be 185 countries)
+        private static string GetCountriesCommand = "SELECT Alpha_2_code FROM GetAPICountries()";
 
         private static RestRequest request = null;
         private static IRestResponse response_Stats = null;
 
-        private static readonly int Delay = 300;
+        private static readonly int Delay = 200;
 
         static void Main(string[] args)
         {
+            if (args.Length > 0)
+            {
+                ParseCommandline(args);
+            }
+
             if (!Directory.Exists(DataFolder))
             {
                 Directory.CreateDirectory(DataFolder);
@@ -66,10 +80,13 @@ namespace Covid19DataLogger2021
 
             List<string> IsoCodeList = new List<string>();
 
+            // In this first block of using the DB connection, we will read the country IsoCodes of the
+            // 185 countries. These IsoCodes are a unique identifier for a country.
+            // Example: 'DK' is Denmark
             SqlConnection conn = new SqlConnection(ConnectionString);
             conn.Open();
 
-            using (SqlCommand cmd = new SqlCommand(Command, conn))
+            using (SqlCommand cmd = new SqlCommand(GetCountriesCommand, conn))
             {
                 SqlDataReader isoCodes = cmd.ExecuteReader();
 
@@ -84,12 +101,13 @@ namespace Covid19DataLogger2021
             }
             conn.Close();
 
-            // Start logging...
+            // Start logging data for each country...
             Console.WriteLine("Covid19DataLogger2021 logging...\n");
             foreach (string isoCode in IsoCodeList)
             {
                 conn.Open();
 
+                // Example theURI: https://disease.sh/v3/covid-19/historical/DK/?lastdays=599
                 String theURI = ClientString1 + isoCode + ClientString2 + DaysBack.ToString();
                 RestClient client = new RestClient(theURI);
                 string jsonContents;
@@ -174,6 +192,69 @@ namespace Covid19DataLogger2021
                 int rowsAffected = cmd2.ExecuteNonQuery();
             }
         }
-    }
 
+        static private void ParseCommandline(string[] args)
+        {
+            string arg0 = args[0].ToLower().Trim();
+            if (arg0 == "-settingsfile")
+            {
+                if (args.Length > 1)
+                {
+                    string path = args[1];
+                    if (File.Exists(path))
+                    {
+                        SettingsPath = path;
+                        IRestResponse Settings;
+                        JsonDeserializer jd;
+                        dynamic dyn1;
+                        dynamic dyn2;
+                        JsonArray al;
+                        string DataSourceFile;
+                        string InitialCatalogFile;
+                        string UserIDFile;
+                        string PasswordFile;
+
+
+                        Settings = new RestResponse()
+                        {
+                            Content = File.ReadAllText(SettingsPath)
+                        };
+
+                        jd = new JsonDeserializer();
+                        dyn1 = jd.Deserialize<dynamic>(Settings);
+                        dyn2 = dyn1["DataFolder"];
+                        string datafolder = dyn2;
+
+                        DataFolder = datafolder + @"CountryStats\";
+                        if (!Directory.Exists(DataFolder))
+                        {
+                            Directory.CreateDirectory(DataFolder);
+                        }
+
+                        // DB connections: Since data could be stored in more that one DB, it was decided to make an array of
+                        // SqlConnectionStringBuilder objects in the DataBases field
+                        dyn2 = dyn1["DataBases"];
+                        al = dyn2;
+                        for (int i = 0; i < al.Count; i++)
+                        {
+                            dyn2 = al[i];
+                            DataSourceFile = dyn2["DataSource"];
+                            InitialCatalogFile = dyn2["InitialCatalog"];
+                            UserIDFile = dyn2["UserID"];
+                            PasswordFile = dyn2["Password"];
+                            SqlConnectionStringBuilder scb = new SqlConnectionStringBuilder()
+                            {
+                                DataSource = DataSourceFile,
+                                InitialCatalog = InitialCatalogFile,
+                                UserID = UserIDFile,
+                                Password = PasswordFile
+                            };
+                            ConnectionStrings.Add(scb);
+                        }
+                    }
+                }
+            }
+        }
+
+    }
 }

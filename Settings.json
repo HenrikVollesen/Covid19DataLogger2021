@@ -1,0 +1,18 @@
+{
+  "DataFolder": "D:\\Data\\coronavirus\\",
+  "APIKey": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "DataBases": [
+    {
+      "DataSource": "SomeLocalSQLServer\\SomeSQLInstance",
+      "InitialCatalog": "Covid-19_Stats",
+      "UserID": "psu_Covid19_Reader",
+      "Password": "Corona_2020"
+    },
+    {
+      "DataSource": "someothersqlserver.someremotesite.abc",
+      "InitialCatalog": "Covid-19_Stats",
+      "UserID": "psu_Covid19_Reader",
+      "Password": "Corona_2020"
+    }
+  ]
+} 
