@@ -1,7 +1,8 @@
 {
   "profiles": {
     "Covid19DataLogger2021": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "commandLineArgs": "-settingsfile \"D:\\Data\\coronavirus\\Covid19DataLogger2021\\net6.0\\settings.json\""
     }
   }
 }
