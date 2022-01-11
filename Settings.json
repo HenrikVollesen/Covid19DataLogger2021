@@ -5,7 +5,7 @@
     {
       "InitialCatalog": "Covid-19_Stats",
       "DataSource": "SomeLocalSQLServer\\SomeSQLInstance",
-      "UserID": "psu_Covid19_Reader",
+      "UserID": "Covid19_Reader",
       "Password": "Corona_2020"
     }
   ]
