@@ -35,7 +35,7 @@ namespace Covid19DataLogger2021
                 }
             }
 
-                Covid19_DataLogger theLogger = new(args);
+            Covid19_DataLogger theLogger = new(args);
             theLogger.Log();
         }
 
