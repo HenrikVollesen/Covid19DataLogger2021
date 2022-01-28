@@ -31,17 +31,7 @@ namespace Covid19DataLogger2021
         private bool StoreDatafiles = false;
 
         // Base folder for storage of coronavirus data - choose your own folder IF you want to save the data files
-        private string DataFolder = @"D:\Data\coronavirus\stats\CountryStats\";
-
-        // If command line contains '-settingsfile', the next argument should be path to a settingsfile.
-        private static string SettingsPath = "Settings.json";
-
-        // Start properties if no command line arguments
-        //private string Filename_Stats = "LatestStats_";
-        //private string DataSourceFile = @"SomeLocalSQLServer\\SomeSQLInstance"; // !!!Remember to change the Server name to your local MSSQL!!!
-        //private string InitialCatalogFile = "Covid-19_Stats";
-        //private string UserIDFile = "Covid19_Writer";
-        //private string PasswordFile = "Corona_2020";
+        private string DataFolder = @"D:\Data\coronavirus\stats\CountryStats";
 
         private static List<SqlConnectionStringBuilder> ConnectionStrings = new List<SqlConnectionStringBuilder>();
 
@@ -54,38 +44,36 @@ namespace Covid19DataLogger2021
         private int ConfirmedYesterday = 0;
         private int DeathsYesterday = 0;
 
-        public Covid19_DataLogger()
+        public void Log(string settings)
         {
+            ParseSettings(settings);
 
-        }
-
-        public Covid19_DataLogger(string[] args) : this()
-        {
-            ParseCommandline(args);
-
-            if (ConnectionStrings.Count == 0)
-            {
-                //SqlConnectionStringBuilder scb = new SqlConnectionStringBuilder()
-                //{
-                //    DataSource = DataSourceFile,
-                //    InitialCatalog = InitialCatalogFile,
-                //    UserID = UserIDFile,
-                //    Password = PasswordFile
-                //};
-
-                //ConnectionStrings.Add(scb);
-            }
-        }
-
-        public void Log()
-        {
             // data may be logged to more than DB, therefore the foreach loop
 
-            //int i = 0;
+            int i = 0;
+
+#if DEBUG
+
             foreach (SqlConnectionStringBuilder s in ConnectionStrings)
             {
-                //if (i > 0)
-                    //break;
+                if (i > 0)
+                break;
+                LoggerSettings loggerSettings = new LoggerSettings()
+                {
+                    SaveFiles = StoreDatafiles,
+                    DataFolder = DataFolder,
+                    ConnString = s.ConnectionString
+                };
+
+                Thread thread1 = new Thread(GetData);
+                thread1.Start(loggerSettings);
+                StoreDatafiles = false; // Only store the first time
+                i++;
+            }
+#else
+
+            foreach (SqlConnectionStringBuilder s in ConnectionStrings)
+            {
                 LoggerSettings loggerSettings = new LoggerSettings()
                 {
                     SaveFiles = false,
@@ -95,9 +83,9 @@ namespace Covid19DataLogger2021
 
                 Thread thread1 = new Thread(GetData);
                 thread1.Start(loggerSettings);
-
-                //i++;
+                StoreDatafiles = false; // Only store the first time
             }
+#endif
         }
 
         private void GetData(object ls)
@@ -233,8 +221,22 @@ namespace Covid19DataLogger2021
                         ls.DaysTimeSpan = now - LastBadDate;
                         ls.DaysBack = ls.DaysTimeSpan.Days;
 
+                        int DaysBack;
+
+                        // If we should save the files, we will go all the way back to day zero
+                        if (ls.SaveFiles)
+                        {
+                            TimeSpan DaysBackToZero = now - DayZero;
+                            DaysBack = DaysBackToZero.Days;
+                        }
+                        else
+                        {
+                            DaysBack = ls.DaysBack;
+                        }
+
                         // Example theURI: https://disease.sh/v3/covid-19/historical/DK/?lastdays=599
-                        String theURI = ClientString1 + isoCode + ClientString2 + ls.DaysBack.ToString();
+                        // string theURI = ClientString1 + isoCode + ClientString2 + ls.DaysBack.ToString();
+                        string theURI = ClientString1 + isoCode + ClientString2 + DaysBack.ToString();
                         RestClient client = new RestClient(theURI);
                         string jsonContents;
                         request = new RestRequest(Method.GET);
@@ -245,7 +247,7 @@ namespace Covid19DataLogger2021
                         {
                             jsonContents = response_Stats.Content;
                             // A unique filename per isoCode is created 
-                            string jsonpath = DataFolder + isoCode + ".json";
+                            string jsonpath = DataFolder + @"\" + isoCode + ".json";
                             Console.WriteLine("Saving file: " + jsonpath);
                             File.WriteAllText(jsonpath, jsonContents);
                             // The country or state datafile was saved
@@ -359,87 +361,63 @@ namespace Covid19DataLogger2021
             return m + "/" + d + "/" + y;
         }
 
-        private void ParseCommandline(string[] args)
+        private void ParseSettings(string settings)
         {
-            if (args.Length > 0)
+            IRestResponse Settings;
+            JsonDeserializer jd;
+            dynamic dyn1;
+            dynamic dyn2;
+            JsonArray al;
+
+            Settings = new RestResponse()
             {
-                string arg0 = args[0].ToLower().Trim();
-                if (arg0 == "-settingsfile")
+                Content = settings
+            };
+
+            jd = new JsonDeserializer();
+            dyn1 = jd.Deserialize<dynamic>(Settings);
+
+            try
+            {
+                StoreDatafiles = dyn1["SaveFiles"];
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+
+            try
+            {
+                dyn2 = dyn1["DataFolder"];
+                DataFolder = dyn2;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+
+            // DB connections: Since data could be stored in more that one DB, it was decided to make an array of
+            // SqlConnectionStringBuilder objects in the DataBases field
+            try
+            {
+                dyn2 = dyn1["DataBases"];
+                al = dyn2;
+                for (int i = 0; i < al.Count; i++)
                 {
-                    if (args.Length > 1)
+                    dyn2 = al[i];
+                    SqlConnectionStringBuilder scb = new()
                     {
-                        SettingsPath = args[1];
-                    }
+                        DataSource = dyn2["DataSource"],
+                        InitialCatalog = dyn2["InitialCatalog"],
+                        UserID = dyn2["UserID"],
+                        Password = dyn2["Password"]
+                    };
+                    ConnectionStrings.Add(scb);
                 }
             }
-            if (File.Exists(SettingsPath))
+            catch (Exception e)
             {
-                IRestResponse Settings;
-                JsonDeserializer jd;
-                dynamic dyn1;
-                dynamic dyn2;
-                JsonArray al;
-                //string DataSourceFile; // !!!Remember to change the Server name to your local MSSQL!!!
-                //string InitialCatalogFile;
-                //string UserIDFile;
-                //string PasswordFile;
-
-                Settings = new RestResponse()
-                {
-                    Content = File.ReadAllText(SettingsPath)
-                };
-
-                jd = new JsonDeserializer();
-                dyn1 = jd.Deserialize<dynamic>(Settings);
-
-                try
-                {
-                    StoreDatafiles = dyn1["SaveFiles"];
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.Message);
-                }
-
-                try
-                {
-                    dyn2 = dyn1["DataFolder"];
-                    DataFolder = dyn2;
-
-                    //DataFolder = datafolder + @"CountryStats\";
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.Message);
-                }
-
-                // DB connections: Since data could be stored in more that one DB, it was decided to make an array of
-                // SqlConnectionStringBuilder objects in the DataBases field
-                try
-                {
-                    dyn2 = dyn1["DataBases"];
-                    al = dyn2;
-                    for (int i = 0; i < al.Count; i++)
-                    {
-                        dyn2 = al[i];
-                        //DataSourceFile = dyn2["DataSource"];
-                        //InitialCatalogFile = dyn2["InitialCatalog"];
-                        //UserIDFile = dyn2["UserID"];
-                        //PasswordFile = dyn2["Password"];
-                        SqlConnectionStringBuilder scb = new SqlConnectionStringBuilder()
-                        {
-                            DataSource = dyn2["DataSource"],
-                            InitialCatalog = dyn2["InitialCatalog"],
-                            UserID = dyn2["UserID"],
-                            Password = dyn2["Password"]
-                        };
-                        ConnectionStrings.Add(scb);
-                    }
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e.Message);
-                }
+                Console.WriteLine(e.Message);
             }
 
         }
